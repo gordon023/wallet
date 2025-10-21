@@ -1,26 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Simple Dashboard</title>
+<style>
+body { font-family: Arial, sans-serif; margin:20px; }
+.hidden { display:none; }
+button { margin:5px; }
+</style>
+</head>
+<body>
+
+<h2>Login / Register</h2>
+<div id="auth">
+  <input id="username" placeholder="Username" />
+  <input id="password" placeholder="Password" type="password" />
+  <button onclick="login()">Login</button>
+  <button onclick="register()">Register</button>
+</div>
+
+<div id="welcome" class="hidden">
+  <h3 id="welcomeText"></h3>
+  <button onclick="showWallet()">Wallet</button>
+  <button onclick="showCombat()">Combat Power</button>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<!-- Wallet Section -->
+<div id="walletSection" class="hidden">
+<h3>Wallet Address</h3>
+<input id="walletInput" placeholder="Enter Wallet Address" />
+<button onclick="addWallet()">Add Wallet</button>
+<table border="1" id="walletTable">
+<tr><th>Address</th><th>Actions</th></tr>
+</table>
+</div>
+
+<!-- Combat Power Section -->
+<div id="combatSection" class="hidden">
+<h3>Combat Power</h3>
+<input type="file" id="combatImage" />
+<button onclick="uploadCombat()">Upload & Detect</button>
+<div id="combatList"></div>
+</div>
+
+<script>
+let currentUser = null;
+let userRole = 'user';
+
 function login() {
-  const user = document.getElementById('username').value;
-  const pass = document.getElementById('password').value;
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
   fetch('/api/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ username: user, password: pass })
-  })
-  .then(res => res.json())
-  .then(data => {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  }).then(res => res.json()).then(data => {
     if(data.success){
-      alert('Login success');
-      // Show dashboard, hide login UI
-      currentUser = data.user;
-      document.getElementById('loginForm').style.display='none';
-      document.getElementById('dashboard').style.display='block';
-      document.getElementById('welcomeText').innerText = `Welcome ${currentUser.username}`;
-      if(currentUser.role==='admin'){ document.getElementById('adminTabBtn').style.display='block'; }
-      renderWalletTable(); 
-      renderCombatTable(); 
-      showTab('walletTab');
+      currentUser = data.user.username;
+      userRole = data.user.role;
+      document.getElementById('auth').classList.add('hidden');
+      document.getElementById('welcome').classList.remove('hidden');
+      document.getElementById('welcomeText').innerText = `Welcome ${currentUser} (${userRole})`;
+      loadWallets();
+      loadCombat();
+      showWallet();
     } else {
-      alert('Invalid credentials');
+      alert('Login failed');
     }
   });
 }
+
+function register() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  fetch('/api/register', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  }).then(res => res.json()).then(data => {
+    alert(data.message);
+  });
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('auth').classList.remove('hidden');
+  document.getElementById('welcome').classList.add('hidden');
+  document.getElementById('walletSection').classList.add('hidden');
+  document.getElementById('combatSection').classList.add('hidden');
+}
+
+// Wallet functions
+function showWallet() {
+  document.getElementById('walletSection').classList.remove('hidden');
+  document.getElementById('combatSection').classList.add('hidden');
+}
+
+function loadWallets() {
+  fetch('/api/wallets').then(res => res.json()).then(data => {
+    const tbody = document.getElementById('walletTable');
+    tbody.innerHTML = '<tr><th>Address</th><th>Actions</th></tr>';
+    data.forEach((w, index) => {
+      if(w.username===currentUser || userRole==='admin'){
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${w.walletAddress}</td>
+        <td>
+        ${userRole==='admin' ? `<button onclick="editWallet(${index})">Edit</button>
+        <button onclick="deleteWallet(${index})">Delete</button>` : ''}
+        </td>`;
+        tbody.appendChild(row);
+      }
+    });
+  });
+}
+
+function addWallet() {
+  const address = document.getElementById('walletInput').value;
+  fetch('/api/wallets', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username: currentUser, walletAddress: address})
+  }).then(() => {
+    loadWallets();
+  });
+}
+
+function deleteWallet(id) {
+  fetch('/api/wallets/'+id, {method:'DELETE'}).then(() => loadWallets());
+}
+
+function editWallet(id) {
+  const newAddr = prompt('Enter new wallet address');
+  if(newAddr){
+    fetch('/api/wallets/'+id, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({walletAddress: newAddr})
+    }).then(() => loadWallets());
+  }
+}
+
+// Combat Power functions
+function showCombat() {
+  document.getElementById('combatSection').classList.remove('hidden');
+  document.getElementById('walletSection').classList.add('hidden');
+}
+
+function loadCombat() {
+  fetch('/api/combat').then(res => res.json()).then(data => {
+    const container = document.getElementById('combatList');
+    container.innerHTML = '';
+    data.forEach((c, index) => {
+      if(c.username===currentUser || userRole==='admin'){
+        const div = document.createElement('div');
+        div.innerHTML = `
+        <img src="${c.imageUrl}" width="200" />
+        <p>Combat Power: ${c.combatPower}</p>
+        ${userRole==='admin' ? `<button onclick="deleteCombat(${index})">Delete</button>` : ''}
+        `;
+        container.appendChild(div);
+      }
+    });
+  });
+}
+
+function uploadCombat() {
+  const file = document.getElementById('combatImage').files[0];
+  if(!file){ alert('Select a file'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const imageUrl = reader.result;
+    const combatPower = Math.floor(Math.random() * 10000);
+    fetch('/api/combat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username: currentUser, imageUrl, combatPower})
+    }).then(() => loadCombat());
+  };
+  reader.readAsDataURL(file);
+}
+
+function deleteCombat(id) {
+  fetch('/api/combat/'+id, {method:'DELETE'}).then(() => loadCombat());
+}
+</script>
+
+</body>
+</html>
