@@ -1,4 +1,0 @@
-mkdir dashboard-backend
-cd dashboard-backend
-npm init -y
-npm install express cors body-parser
